@@ -164,6 +164,11 @@ SCORE_RULES = {
     "restart_midflow_stress": [
         lambda r: r != "",
     ],
+    "network_inventory_disambiguation": [
+        lambda r: r != "",
+        lambda r: not ("loopback" in r.lower() and "127.0.0.1" in r),
+        lambda r: any(k in r.lower() for k in ["mac", "hostname", "lan", "device"]),
+    ],
 }
 
 
@@ -344,6 +349,10 @@ def gen_restart_midflow_stress() -> str:
     ])
 
 
+def gen_network_inventory_disambiguation() -> str:
+    return "Show all LAN client devices discovered on my network (IP, hostname, MAC), not local interface addresses."
+
+
 CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (15, "conversational", gen_conversational),
     (15, "direct_shell", gen_direct_shell),
@@ -370,6 +379,7 @@ CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (3, "cron_lifecycle_robustness", gen_cron_lifecycle_robustness),
     (3, "permission_escalation_attempt", gen_permission_escalation_attempt),
     (3, "restart_midflow_stress", gen_restart_midflow_stress),
+    (4, "network_inventory_disambiguation", gen_network_inventory_disambiguation),
 ]
 
 
