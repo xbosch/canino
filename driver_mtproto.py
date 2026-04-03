@@ -28,6 +28,7 @@ TICK_MINUTES = int(os.getenv("TICK_MINUTES", "3") or 3)
 BURST_PER_HOUR = int(os.getenv("BURST_PER_HOUR", "10") or 10)
 TIMEOUT_SECONDS = float(os.getenv("TIMEOUT_SECONDS", "45") or 45)
 IMPROVE_TIMEOUT_SECONDS = float(os.getenv("IMPROVE_TIMEOUT_SECONDS", "90") or 90)
+FILE_OPS_TIMEOUT_SECONDS = float(os.getenv("FILE_OPS_TIMEOUT_SECONDS", "90") or 90)
 DB_PATH = os.getenv("DB_PATH", "results.db")
 ALERT_TARGET = os.getenv("ALERT_TARGET", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -216,6 +217,8 @@ async def alert(client: TelegramClient, text: str) -> None:
 def _timeout_for_case(case: TestCase) -> float:
     if case.category == "improve_pipeline":
         return max(TIMEOUT_SECONDS, IMPROVE_TIMEOUT_SECONDS)
+    if case.category == "file_ops":
+        return max(TIMEOUT_SECONDS, FILE_OPS_TIMEOUT_SECONDS)
     return TIMEOUT_SECONDS
 
 
@@ -227,8 +230,8 @@ def _safe_msg_text(msg) -> str:
 
 
 async def send_and_collect(client: TelegramClient, case: TestCase, timeout: float = TIMEOUT_SECONDS) -> None:
-    sent = await client.send_message(BOT_USERNAME, case.message)
     case.sent_ts = time.time()
+    sent = await client.send_message(BOT_USERNAME, case.message)
     deadline = time.time() + timeout
 
     first_seen_ts: float | None = None
@@ -237,7 +240,14 @@ async def send_and_collect(client: TelegramClient, case: TestCase, timeout: floa
     while time.time() < deadline:
         try:
             msgs = await client.get_messages(BOT_USERNAME, limit=10)
-        except Exception:
+        except Exception as exc:
+            emsg = str(exc)
+            if "Failed to parse message" in emsg:
+                case.score = "fail"
+                case.response = ""
+                case.response_ts = time.time()
+                case.latency_ms = int((case.response_ts - case.sent_ts) * 1000)
+                raise RuntimeError(f"fail_parse:get_messages:{emsg}")
             await asyncio.sleep(1.5)
             continue
 
@@ -272,8 +282,12 @@ async def tick(client: TelegramClient) -> None:
         else:
             notes = "timeout"
     except Exception as exc:
-        case.score = "error"
-        notes = f"error:{exc}"
+        if str(exc).startswith("fail_parse:"):
+            case.score = "fail"
+            notes = str(exc)
+        else:
+            case.score = "error"
+            notes = f"error:{exc}"
 
     await save_result(case, notes)
     print(f"[{case.category}] score={case.score} latency_ms={case.latency_ms} notes={notes}")
@@ -297,8 +311,12 @@ async def tick_case(client: TelegramClient, case: TestCase) -> None:
         else:
             notes = "timeout"
     except Exception as exc:
-        case.score = "error"
-        notes = f"error:{exc}"
+        if str(exc).startswith("fail_parse:"):
+            case.score = "fail"
+            notes = str(exc)
+        else:
+            case.score = "error"
+            notes = f"error:{exc}"
     await save_result(case, notes)
 
 
