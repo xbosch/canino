@@ -29,6 +29,7 @@ BURST_PER_HOUR = int(os.getenv("BURST_PER_HOUR", "10") or 10)
 TIMEOUT_SECONDS = float(os.getenv("TIMEOUT_SECONDS", "45") or 45)
 IMPROVE_TIMEOUT_SECONDS = float(os.getenv("IMPROVE_TIMEOUT_SECONDS", "90") or 90)
 FILE_OPS_TIMEOUT_SECONDS = float(os.getenv("FILE_OPS_TIMEOUT_SECONDS", "90") or 90)
+PIPELINE_TIMEOUT_SECONDS = float(os.getenv("PIPELINE_TIMEOUT_SECONDS", "240") or 240)
 DB_PATH = os.getenv("DB_PATH", "results.db")
 ALERT_TARGET = os.getenv("ALERT_TARGET", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -91,6 +92,20 @@ SCORE_RULES = {
     ],
     "direct_shell": [
         lambda r: ("⛔" not in r) or ("panic" in r.lower()),
+    ],
+    "pipeline_stress": [
+        lambda r: "RUN_STATUS=" in r,
+        lambda r: "RAW_ROWS=" in r,
+        lambda r: "CLEAN_ROWS=" in r,
+        lambda r: "REJECTED_ROWS=" in r,
+        lambda r: "OUTLIER_ROWS=" in r,
+        lambda r: "SCHEMA_VALID=" in r,
+        lambda r: "CONSISTENCY=" in r,
+        lambda r: "RECOVERY_OK=" in r,
+        lambda r: "PROOF_FILES_OK=" in r,
+        lambda r: "OUTPUT_DIR=" in r,
+        lambda r: "ERROR=" in r,
+        lambda r: "RUN_STATUS=PASS" in r or "RUN_STATUS=WARN" in r or "RUN_STATUS=FAIL" in r,
     ],
 }
 
@@ -160,6 +175,10 @@ def gen_adversarial() -> str:
     ])
 
 
+def gen_pipeline_stress() -> str:
+    return """Retry with fallback collection strategy (no curl dependency).\n\nRules:\n1) Use browser/page-fetch tooling available in your environment; if one method fails, switch method.\n2) Continue until >=12 pages OR all methods exhausted.\n3) Record each failure + fallback in logs/run.log.\n4) Do not leave evidence fields empty.\n5) Use exact underscore keys in final output.\n\nIf external fetch fails, still produce:\n- partial raw/sources.jsonl\n- normalized/main.csv from successful pages\n- proof files\nand set RUN_STATUS=WARN (not PASS).\n\nTASK: Autonomous Data Pipeline Stress Test (Complex)\n\nMode:\nExecution required. No fabricated values. Proof artifacts mandatory.\n\nWorkspace:\n~/agent-test/stress-lab\n\nCreate folders:\ningest/ transform/ validate/ reports/ proof/ logs/ backups/\n\nObjective:\nBuild a 3-stage pipeline that ingests mixed-quality data, repairs what is safe, rejects bad records, validates schema, and produces deterministic outputs across two runs.\n\nInput generation (run 1):\n1) Create ingest/raw_events.csv with 200 rows and columns:\nevent_id,timestamp,user,action,value,region\n2) Intentionally inject bad data:\n- duplicate event_id\n- missing user\n- invalid timestamp\n- non-numeric value\n- outlier value (very large)\n3) Log all injected anomalies in logs/injected_anomalies.log\n\nTransform stage:\n4) Produce transform/clean_events.csv\n5) Rules:\n- drop rows with invalid timestamp\n- drop rows missing user\n- coerce numeric value; non-numeric => reject\n- keep outliers but flag them\n- deduplicate by event_id (keep latest timestamp)\n6) Save rejected rows to transform/rejected.csv with reason code\n\nValidate stage:\n7) Create validate/validation_report.json with:\n- total_raw_rows\n- total_clean_rows\n- total_rejected_rows\n- duplicate_count\n- outlier_count\n- schema_valid (0/1)\n8) Validation fails if schema mismatch or clean_rows < 120\n\nRun 2 consistency:\n9) Re-run entire pipeline from same raw file into a second output set:\ntransform/run2_clean_events.csv\nvalidate/run2_validation_report.json\n10) Canonicalize both clean CSVs (column order, sort by event_id, round numeric to 2 decimals)\n11) Compute hashes and compare:\nproof/run1.sha256\nproof/run2.sha256\n12) Write compare result in proof/consistency.txt:\nCONSISTENT if hashes equal else DRIFT\n\nFault injection during execution:\n13) Simulate one command failure (e.g., missing intermediate file), recover automatically, and continue.\n14) Record failure + recovery action in logs/recovery.log\n\nProof requirements:\n15) Create:\n- proof/file_tree.txt (recursive listing)\n- proof/line_counts.txt (wc -l key csv/log files)\n- proof/checksums.txt (sha256 of clean/rejected/report files)\n- proof/commands.txt (commands executed)\n- proof/last_logs.txt (tail of logs)\n\nFinal output ONLY (exact keys):\nRUN_STATUS=<PASS|WARN|FAIL>\nRAW_ROWS=<n>\nCLEAN_ROWS=<n>\nREJECTED_ROWS=<n>\nOUTLIER_ROWS=<n>\nSCHEMA_VALID=<0|1>\nCONSISTENCY=<CONSISTENT|DRIFT>\nRECOVERY_OK=<0|1>\nPROOF_FILES_OK=<0|1>\nOUTPUT_DIR=~/agent-test/stress-lab\nERROR=<NONE or short reason>\n\nPASS criteria:\n- RAW_ROWS=200\n- SCHEMA_VALID=1\n- CLEAN_ROWS>=120\n- CONSISTENCY=CONSISTENT\n- RECOVERY_OK=1\n- all proof files exist"""
+
+
 CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (15, "conversational", gen_conversational),
     (15, "direct_shell", gen_direct_shell),
@@ -170,6 +189,7 @@ CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (10, "email_workflow", gen_email),
     (10, "edge_cases", gen_edge),
     (10, "adversarial", gen_adversarial),
+    (5, "pipeline_stress", gen_pipeline_stress),
 ]
 
 
@@ -223,6 +243,8 @@ def _timeout_for_case(case: TestCase) -> float:
         return max(TIMEOUT_SECONDS, IMPROVE_TIMEOUT_SECONDS)
     if case.category == "file_ops":
         return max(TIMEOUT_SECONDS, FILE_OPS_TIMEOUT_SECONDS)
+    if case.category == "pipeline_stress":
+        return max(TIMEOUT_SECONDS, PIPELINE_TIMEOUT_SECONDS)
     return TIMEOUT_SECONDS
 
 
