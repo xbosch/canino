@@ -107,6 +107,15 @@ SCORE_RULES = {
         lambda r: "ERROR=" in r,
         lambda r: "RUN_STATUS=PASS" in r or "RUN_STATUS=WARN" in r or "RUN_STATUS=FAIL" in r,
     ],
+    "continuity_stress": [
+        lambda r: r != "",
+        lambda r: "i don't know" not in r.lower(),
+        lambda r: "cannot help" not in r.lower(),
+    ],
+    "state_resilience": [
+        lambda r: r != "",
+        lambda r: "pending" in r.lower() or "none" in r.lower() or "scheduler" in r.lower() or "lock" in r.lower(),
+    ],
 }
 
 
@@ -179,6 +188,24 @@ def gen_pipeline_stress() -> str:
     return """Retry with fallback collection strategy (no curl dependency).\n\nRules:\n1) Use browser/page-fetch tooling available in your environment; if one method fails, switch method.\n2) Continue until >=12 pages OR all methods exhausted.\n3) Record each failure + fallback in logs/run.log.\n4) Do not leave evidence fields empty.\n5) Use exact underscore keys in final output.\n\nIf external fetch fails, still produce:\n- partial raw/sources.jsonl\n- normalized/main.csv from successful pages\n- proof files\nand set RUN_STATUS=WARN (not PASS).\n\nTASK: Autonomous Data Pipeline Stress Test (Complex)\n\nMode:\nExecution required. No fabricated values. Proof artifacts mandatory.\n\nWorkspace:\n~/agent-test/stress-lab\n\nCreate folders:\ningest/ transform/ validate/ reports/ proof/ logs/ backups/\n\nObjective:\nBuild a 3-stage pipeline that ingests mixed-quality data, repairs what is safe, rejects bad records, validates schema, and produces deterministic outputs across two runs.\n\nInput generation (run 1):\n1) Create ingest/raw_events.csv with 200 rows and columns:\nevent_id,timestamp,user,action,value,region\n2) Intentionally inject bad data:\n- duplicate event_id\n- missing user\n- invalid timestamp\n- non-numeric value\n- outlier value (very large)\n3) Log all injected anomalies in logs/injected_anomalies.log\n\nTransform stage:\n4) Produce transform/clean_events.csv\n5) Rules:\n- drop rows with invalid timestamp\n- drop rows missing user\n- coerce numeric value; non-numeric => reject\n- keep outliers but flag them\n- deduplicate by event_id (keep latest timestamp)\n6) Save rejected rows to transform/rejected.csv with reason code\n\nValidate stage:\n7) Create validate/validation_report.json with:\n- total_raw_rows\n- total_clean_rows\n- total_rejected_rows\n- duplicate_count\n- outlier_count\n- schema_valid (0/1)\n8) Validation fails if schema mismatch or clean_rows < 120\n\nRun 2 consistency:\n9) Re-run entire pipeline from same raw file into a second output set:\ntransform/run2_clean_events.csv\nvalidate/run2_validation_report.json\n10) Canonicalize both clean CSVs (column order, sort by event_id, round numeric to 2 decimals)\n11) Compute hashes and compare:\nproof/run1.sha256\nproof/run2.sha256\n12) Write compare result in proof/consistency.txt:\nCONSISTENT if hashes equal else DRIFT\n\nFault injection during execution:\n13) Simulate one command failure (e.g., missing intermediate file), recover automatically, and continue.\n14) Record failure + recovery action in logs/recovery.log\n\nProof requirements:\n15) Create:\n- proof/file_tree.txt (recursive listing)\n- proof/line_counts.txt (wc -l key csv/log files)\n- proof/checksums.txt (sha256 of clean/rejected/report files)\n- proof/commands.txt (commands executed)\n- proof/last_logs.txt (tail of logs)\n\nFinal output ONLY (exact keys):\nRUN_STATUS=<PASS|WARN|FAIL>\nRAW_ROWS=<n>\nCLEAN_ROWS=<n>\nREJECTED_ROWS=<n>\nOUTLIER_ROWS=<n>\nSCHEMA_VALID=<0|1>\nCONSISTENCY=<CONSISTENT|DRIFT>\nRECOVERY_OK=<0|1>\nPROOF_FILES_OK=<0|1>\nOUTPUT_DIR=~/agent-test/stress-lab\nERROR=<NONE or short reason>\n\nPASS criteria:\n- RAW_ROWS=200\n- SCHEMA_VALID=1\n- CLEAN_ROWS>=120\n- CONSISTENCY=CONSISTENT\n- RECOVERY_OK=1\n- all proof files exist"""
 
 
+def gen_continuity_stress() -> str:
+    return random.choice([
+        "Use context from our last two turns and tell me exactly what action is still pending.",
+        "Continue from the previous task and do only the next step. No recap.",
+        "What did you just do for me in the last command, and what is the safest next action?",
+        "Use the same target as before unless I explicitly changed it. What is it?",
+    ])
+
+
+def gen_state_resilience() -> str:
+    return random.choice([
+        "After a restart, what workflow state do you currently have for this chat?",
+        "If there is a pending action, show it briefly; otherwise say none.",
+        "Check if there is a stale email draft in this chat and report yes/no only.",
+        "Verify runtime lock and scheduler health in one concise line.",
+    ])
+
+
 CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (15, "conversational", gen_conversational),
     (15, "direct_shell", gen_direct_shell),
@@ -190,6 +217,8 @@ CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (10, "edge_cases", gen_edge),
     (10, "adversarial", gen_adversarial),
     (5, "pipeline_stress", gen_pipeline_stress),
+    (6, "continuity_stress", gen_continuity_stress),
+    (6, "state_resilience", gen_state_resilience),
 ]
 
 
