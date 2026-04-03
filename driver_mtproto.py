@@ -27,6 +27,7 @@ BOT_USERNAME = os.getenv("BOT_USERNAME", "@xobop_dev2_bot")
 TICK_MINUTES = int(os.getenv("TICK_MINUTES", "3") or 3)
 BURST_PER_HOUR = int(os.getenv("BURST_PER_HOUR", "10") or 10)
 TIMEOUT_SECONDS = float(os.getenv("TIMEOUT_SECONDS", "45") or 45)
+IMPROVE_TIMEOUT_SECONDS = float(os.getenv("IMPROVE_TIMEOUT_SECONDS", "90") or 90)
 DB_PATH = os.getenv("DB_PATH", "results.db")
 ALERT_TARGET = os.getenv("ALERT_TARGET", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -212,6 +213,19 @@ async def alert(client: TelegramClient, text: str) -> None:
         pass
 
 
+def _timeout_for_case(case: TestCase) -> float:
+    if case.category == "improve_pipeline":
+        return max(TIMEOUT_SECONDS, IMPROVE_TIMEOUT_SECONDS)
+    return TIMEOUT_SECONDS
+
+
+def _safe_msg_text(msg) -> str:
+    try:
+        return (getattr(msg, "message", None) or "").strip()
+    except Exception:
+        return ""
+
+
 async def send_and_collect(client: TelegramClient, case: TestCase, timeout: float = TIMEOUT_SECONDS) -> None:
     sent = await client.send_message(BOT_USERNAME, case.message)
     case.sent_ts = time.time()
@@ -221,9 +235,15 @@ async def send_and_collect(client: TelegramClient, case: TestCase, timeout: floa
     first_seen_msg = None
 
     while time.time() < deadline:
-        msgs = await client.get_messages(BOT_USERNAME, limit=10)
+        try:
+            msgs = await client.get_messages(BOT_USERNAME, limit=10)
+        except Exception:
+            await asyncio.sleep(1.5)
+            continue
+
         for msg in msgs:
-            if msg.id > sent.id and not msg.out and (msg.message or "").strip():
+            text = _safe_msg_text(msg)
+            if msg.id > sent.id and not msg.out and text:
                 if first_seen_ts is None:
                     first_seen_ts = time.time()
                     first_seen_msg = msg
@@ -232,7 +252,7 @@ async def send_and_collect(client: TelegramClient, case: TestCase, timeout: floa
                 if time.time() - first_seen_ts < 1.2:
                     break
                 chosen = msg if msg.id >= getattr(first_seen_msg, "id", 0) else first_seen_msg
-                case.response = (chosen.message or "").strip()
+                case.response = _safe_msg_text(chosen)
                 case.response_ts = time.time()
                 case.latency_ms = int((case.response_ts - case.sent_ts) * 1000)
                 return
@@ -246,7 +266,7 @@ async def tick(client: TelegramClient) -> None:
     case = TestCase(category=category, message=generator())
 
     try:
-        await send_and_collect(client, case)
+        await send_and_collect(client, case, timeout=_timeout_for_case(case))
         if case.score != "timeout":
             case.score, notes = score_case(case)
         else:
@@ -271,7 +291,7 @@ async def burst_tick(client: TelegramClient) -> None:
 
 async def tick_case(client: TelegramClient, case: TestCase) -> None:
     try:
-        await send_and_collect(client, case, timeout=TIMEOUT_SECONDS)
+        await send_and_collect(client, case, timeout=_timeout_for_case(case))
         if case.score != "timeout":
             case.score, notes = score_case(case)
         else:
