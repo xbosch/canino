@@ -297,6 +297,8 @@ async def run_driver() -> None:
     scheduler.start()
 
     print(f"Driver running. tick={TICK_MINUTES}m burst/hour={BURST_PER_HOUR}")
+    # fire one test immediately so startup confirms end-to-end behavior
+    await tick(client)
     await asyncio.Event().wait()
 
 
