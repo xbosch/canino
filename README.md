@@ -1,36 +1,39 @@
-# Canino — XoBop Adversarial Telegram Tester
+# Canino
 
-This repository hosts a focused adversarial/load test harness for XoBop over Telegram.
+Telegram adversarial/load tester for XoBop.
 
-## What this does
-- Sends periodic test prompts to XoBop via Telegram
-- Exercises normal, edge, and adversarial message categories
-- Collects asynchronous bot responses
-- Scores pass/fail/timeout/error outcomes
-- Stores run data in SQLite for later review
+## What it does
+- Sends periodic test prompts to the bot from your Telegram user account (MTProto via Telethon)
+- Covers conversational, shell, cron, memory, edge-case, and adversarial categories
+- Collects async replies and scores pass/fail/timeout/error
+- Stores results in SQLite (`results.db`)
 
-## Project layout
-- `adversarial-tester/driver_mtproto.py` — primary runner (owner-account MTProto via Telethon)
-- `adversarial-tester/main.py` — legacy/simple Bot API runner
-- `adversarial-tester/ready_check.py` — preflight readiness checker
-- `adversarial-tester/.env.example` — required environment variables template
-- `adversarial-tester/requirements.txt` — Python dependencies
-
-## Recommended mode
-Use **MTProto mode** (`driver_mtproto.py`) for realistic owner-account testing.
-
-## Quick start
+## Quick install (interactive)
 ```bash
-cd adversarial-tester
-python3 -m venv .venv
+bash install.sh
+```
+
+The installer will:
+- create `.venv`
+- install dependencies
+- ask for all required parameters
+- explain where to get Telegram API credentials
+- write `.env`
+- run readiness check
+
+## Run
+```bash
 source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# fill TG_API_ID, TG_API_HASH, BOT_USERNAME
-python ready_check.py
 python driver_mtproto.py
 ```
 
+## Files
+- `driver_mtproto.py` — main MTProto test driver
+- `main.py` — legacy Bot API mode
+- `ready_check.py` — preflight checker
+- `.env.example` — env template
+- `install.sh` — setup wizard
+
 ## Notes
-- `.env`, `.venv`, and `results.db` are intentionally ignored.
-- The driver includes weighted categories and safety/adversarial checks.
+- First run requires Telegram login code (and maybe 2FA) in terminal.
+- `.env`, `.venv`, and `results.db` are git-ignored.
