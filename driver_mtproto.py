@@ -292,8 +292,8 @@ async def run_driver() -> None:
     await client.start()
 
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(lambda: asyncio.create_task(tick(client)), "interval", minutes=max(1, TICK_MINUTES), id="test_tick")
-    scheduler.add_job(lambda: asyncio.create_task(burst_tick(client)), "cron", minute=0, id="burst_tick")
+    scheduler.add_job(tick, "interval", minutes=max(1, TICK_MINUTES), id="test_tick", args=[client])
+    scheduler.add_job(burst_tick, "cron", minute=0, id="burst_tick", args=[client])
     scheduler.start()
 
     print(f"Driver running. tick={TICK_MINUTES}m burst/hour={BURST_PER_HOUR}")
