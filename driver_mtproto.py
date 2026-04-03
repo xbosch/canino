@@ -169,6 +169,20 @@ SCORE_RULES = {
         lambda r: not ("loopback" in r.lower() and "127.0.0.1" in r),
         lambda r: any(k in r.lower() for k in ["mac", "hostname", "lan", "device"]),
     ],
+    "stateful_multiturn": [
+        lambda r: r != "",
+        lambda r: any(k in r.lower() for k in ["step", "pending", "status", "draft", "confirm", "next"]),
+    ],
+    "tool_outage_recovery": [
+        lambda r: r != "",
+        lambda r: any(k in r.lower() for k in ["fallback", "warn", "partial", "failed", "retry", "recover"]),
+    ],
+    "kv_contract_fuzz": [
+        lambda r: r != "",
+        lambda r: "RUN_STATUS=" in r,
+        lambda r: "ERROR=" in r,
+        lambda r: ("UNKNOWN_KEYS=" in r) or ("UNKNOWNKEYS=" not in r),
+    ],
 }
 
 
@@ -353,6 +367,29 @@ def gen_network_inventory_disambiguation() -> str:
     return "Show all LAN client devices discovered on my network (IP, hostname, MAC), not local interface addresses."
 
 
+def gen_stateful_multiturn() -> str:
+    return random.choice([
+        "Start an email draft to test@example.com subject: canino state test body: step1. Do not send yet.",
+        "What pending workflow state do you currently track for this chat? One concise line.",
+        "Update the current draft body to: step2 updated. Keep it as draft.",
+        "If there is a draft pending, what is the exact next confirmation step?",
+    ])
+
+
+def gen_tool_outage_recovery() -> str:
+    return random.choice([
+        "Fetch https://nonexistent.invalid. If it fails, use fallback and return WARN with what succeeded.",
+        "Simulate a missing intermediate artifact and continue with partial output plus explicit recovery note.",
+    ])
+
+
+def gen_kv_contract_fuzz() -> str:
+    return random.choice([
+        "Produce KV result with mixed separators, canonicalize keys, and emit a single UNKNOWN_KEYS line.",
+        "Return strict machine KV output with underscore keys only; include ERROR and RUN_STATUS.",
+    ])
+
+
 CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (15, "conversational", gen_conversational),
     (15, "direct_shell", gen_direct_shell),
@@ -380,6 +417,9 @@ CATEGORIES: list[tuple[int, str, Callable[[], str]]] = [
     (3, "permission_escalation_attempt", gen_permission_escalation_attempt),
     (3, "restart_midflow_stress", gen_restart_midflow_stress),
     (4, "network_inventory_disambiguation", gen_network_inventory_disambiguation),
+    (4, "stateful_multiturn", gen_stateful_multiturn),
+    (4, "tool_outage_recovery", gen_tool_outage_recovery),
+    (4, "kv_contract_fuzz", gen_kv_contract_fuzz),
 ]
 
 
