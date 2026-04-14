@@ -665,10 +665,7 @@ async def send_and_collect(client: TelegramClient, case: TestCase, timeout: floa
     case.score = "timeout"
 
 
-async def tick(client: TelegramClient) -> None:
-    category, generator = weighted_choice()
-    case = TestCase(category=category, message=generator())
-
+async def tick_case(client: TelegramClient, case: TestCase) -> None:
     try:
         await send_and_collect(client, case, timeout=_timeout_for_case(case))
         if case.score != "timeout":
@@ -690,13 +687,18 @@ async def tick(client: TelegramClient) -> None:
         await alert(client, f"⚠️ XoBop test {case.score}: {case.category}\nmsg={case.message[:200]}\nnotes={notes}")
 
 
-# Fix 2: burst_tick now calls tick() directly — eliminates duplicate tick_case(),
-# adds per-test error recovery so one failure doesn't abort the burst.
+async def tick(client: TelegramClient) -> None:
+    category, generator = weighted_choice()
+    case = TestCase(category=category, message=generator())
+    await tick_case(client, case)
+
+
 async def burst_tick(client: TelegramClient) -> None:
     n = max(1, BURST_PER_HOUR)
-    for i in range(n):
+    cases = [TestCase(category=cat, message=gen()) for cat, gen in (weighted_choice() for _ in range(n))]
+    for i, case in enumerate(cases):
         try:
-            await tick(client)
+            await tick_case(client, case)
         except Exception as exc:
             print(f"[burst] test {i+1}/{n} error (continuing): {exc}")
         await asyncio.sleep(2.0)
