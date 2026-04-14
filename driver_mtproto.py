@@ -262,8 +262,7 @@ def gen_cron() -> str:
 
 
 def gen_memory() -> str:
-    return random.choice(["/memdiag", "/memories 5", "/facts", "/remember load_test_key: load_test_value",
-                          "/memories 3", "/remember canino_check: ok"])
+    return random.choice(["/memdiag", "/memories 5", "/facts", "/memories 3"])
 
 
 def gen_improve() -> str:
